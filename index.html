@@ -224,7 +224,10 @@ $('dex').onclick = e => {
 function newReader() {
   if (!window.Html5Qrcode) { $('msg').textContent = '바코드 판독기를 불러오지 못했어요. 인터넷 연결을 확인해 주세요.'; return null; }
   const F = Html5QrcodeSupportedFormats;
-  return new Html5Qrcode('reader', { formatsToSupport: [F.EAN_13, F.EAN_8, F.UPC_A, F.UPC_E, F.CODE_128] });
+  return new Html5Qrcode('reader', {
+    formatsToSupport: [F.EAN_13, F.EAN_8, F.UPC_A, F.UPC_E, F.CODE_128],
+    experimentalFeatures: { useBarCodeDetectorIfSupported: true }, // 안드로이드 크롬 내장 인식기
+  });
 }
 
 // 실시간 카메라 스캔
@@ -242,7 +245,12 @@ $('scanBtn').onclick = async () => {
   $('scanBtn').textContent = '■ 스캔 멈추기';
   $('msg').textContent = '';
   try {
-    await scanner.start({ facingMode: 'environment' }, { fps: 10, qrbox: { width: 260, height: 120 } },
+    // 고화질 + 넓은 인식 영역: 기본값(저화질·작은 네모)은 아이폰에서 1차원 바코드를 잘 못 읽음
+    await scanner.start({ facingMode: 'environment' }, {
+      fps: 10,
+      qrbox: (w, h) => ({ width: Math.max(100, Math.floor(w * 0.9)), height: Math.max(60, Math.floor(h * 0.45)) }),
+      videoConstraints: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } },
+    },
       async text => { await stopScan(); handleCode(text); });
   } catch (e) {
     scanner = null;
