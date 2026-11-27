@@ -22,9 +22,6 @@
   h1 { font-size: 22px; margin: 8px 0 4px; }
   .sub { color: var(--sub); font-size: 14px; margin: 0 0 16px; }
   button { font: inherit; border: 0; border-radius: 12px; padding: 14px; background: var(--btn); color: var(--btn-text); cursor: pointer; width: 100%; font-weight: 600; }
-  .row { display: flex; gap: 8px; margin-top: 8px; }
-  .row input { flex: 1; font: inherit; padding: 12px; border-radius: 12px; border: 1px solid var(--line); background: var(--card); color: var(--text); min-width: 0; }
-  .row button { width: auto; padding: 12px 16px; }
   #reader { margin-top: 12px; border-radius: 12px; overflow: hidden; }
   #msg { min-height: 20px; color: #d33; font-size: 14px; margin: 8px 0; }
   #result { display: none; text-align: center; background: var(--card); border: 3px solid var(--line); border-radius: 16px; padding: 20px; margin: 12px 0; }
@@ -58,10 +55,6 @@
   <!-- 예비: 실시간 카메라가 막힌 곳(Claude 비공개 페이지 등)에서는 사진으로 읽기 -->
   <input type="file" id="photo" accept="image/*" capture="environment">
   <label for="photo" class="btn ghost" id="photoLabel">🖼 사진으로 읽기</label>
-  <div class="row">
-    <input id="codeInput" inputmode="numeric" placeholder="또는 바코드 숫자 입력">
-    <button id="codeBtn">확인</button>
-  </div>
   <div id="msg"></div>
 
   <div id="result"></div>
@@ -280,8 +273,6 @@ $('photo').onchange = async () => {
   }
 };
 
-$('codeBtn').onclick = () => handleCode($('codeInput').value);
-$('codeInput').onkeydown = e => { if (e.key === 'Enter') handleCode($('codeInput').value); };
 
 renderDex();
 
