@@ -1,0 +1,288 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>바코드 몬스터 도감</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<style>
+  :root {
+    --bg: #f6f3ee; --card: #ffffff; --text: #222; --sub: #777; --line: #e4ded4;
+    --common: #8a9aa8; --rare: #3b7ddd; --legend: #e0a100; --btn: #2b2b2b; --btn-text: #fff;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) { --bg: #17171a; --card: #232328; --text: #eee; --sub: #999; --line: #34343a; --btn: #eee; --btn-text: #111; color-scheme: dark; }
+  }
+  :root[data-theme="dark"] { --bg: #17171a; --card: #232328; --text: #eee; --sub: #999; --line: #34343a; --btn: #eee; --btn-text: #111; color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font-family: system-ui, -apple-system, "Malgun Gothic", sans-serif; }
+  main { max-width: 480px; margin: 0 auto; padding-block: 16px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+  #photo { position: absolute; opacity: 0; width: 1px; height: 1px; }
+  label.btn { display: block; text-align: center; border-radius: 12px; padding: 12px; background: var(--btn); color: var(--btn-text); cursor: pointer; font-weight: 600; margin-top: 8px; }
+  label.btn.ghost { background: transparent; color: var(--text); border: 1px solid var(--line); }
+  #photo:focus-visible + label.btn { outline: 3px solid var(--rare); }
+  h1 { font-size: 22px; margin: 8px 0 4px; }
+  .sub { color: var(--sub); font-size: 14px; margin: 0 0 16px; }
+  button { font: inherit; border: 0; border-radius: 12px; padding: 14px; background: var(--btn); color: var(--btn-text); cursor: pointer; width: 100%; font-weight: 600; }
+  .row { display: flex; gap: 8px; margin-top: 8px; }
+  .row input { flex: 1; font: inherit; padding: 12px; border-radius: 12px; border: 1px solid var(--line); background: var(--card); color: var(--text); min-width: 0; }
+  .row button { width: auto; padding: 12px 16px; }
+  #reader { margin-top: 12px; border-radius: 12px; overflow: hidden; }
+  #msg { min-height: 20px; color: #d33; font-size: 14px; margin: 8px 0; }
+  #result { display: none; text-align: center; background: var(--card); border: 3px solid var(--line); border-radius: 16px; padding: 20px; margin: 12px 0; }
+  .portrait { width: 140px; height: 140px; margin: 0 auto; border-radius: 50%; overflow: hidden; }
+  .portrait svg { width: 100%; height: 100%; display: block; }
+  #result .name { font-size: 22px; font-weight: 700; margin-top: 10px; }
+  #result .tag { display: inline-block; margin-top: 6px; padding: 2px 10px; border-radius: 99px; color: #fff; font-size: 13px; }
+  #result .desc { color: var(--sub); margin-top: 8px; font-size: 14px; }
+  #result .new { color: #d33; font-weight: 700; margin-bottom: 8px; }
+  .stats { display: flex; justify-content: center; gap: 16px; margin-top: 10px; font-size: 14px; }
+  .stats b { display: block; font-size: 18px; }
+  h2 { font-size: 17px; margin: 24px 0 8px; display: flex; justify-content: space-between; }
+  .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+  .cell { background: var(--card); border: 2px solid var(--line); border-radius: 12px; padding: 6px 2px; display: flex; flex-direction: column; align-items: center; cursor: pointer; }
+  .cell .portrait { width: 56px; height: 56px; }
+  .cell small { font-size: 11px; margin-top: 4px; text-align: center; word-break: keep-all; }
+  .empty { color: var(--sub); font-size: 14px; grid-column: 1 / -1; }
+  h2 { flex-wrap: wrap; gap: 4px 12px; }
+  #count { font-size: 14px; font-weight: 500; color: var(--sub); }
+  .r-common { border-color: var(--common); } .r-rare { border-color: var(--rare); } .r-legend { border-color: var(--legend); }
+  .bg-common { background: var(--common); } .bg-rare { background: var(--rare); } .bg-legend { background: var(--legend); }
+</style>
+</head>
+<body>
+<main>
+  <h1>바코드 몬스터 도감</h1>
+  <p class="sub">상품 바코드를 찍으면 그 바코드에 사는 몬스터가 나타나요. 바코드마다 다른 몬스터!</p>
+
+  <button id="scanBtn">📷 바코드 스캔</button>
+  <div id="reader" hidden></div>
+  <!-- 예비: 실시간 카메라가 막힌 곳(Claude 비공개 페이지 등)에서는 사진으로 읽기 -->
+  <input type="file" id="photo" accept="image/*" capture="environment">
+  <label for="photo" class="btn ghost" id="photoLabel">🖼 사진으로 읽기</label>
+  <div class="row">
+    <input id="codeInput" inputmode="numeric" placeholder="또는 바코드 숫자 입력">
+    <button id="codeBtn">확인</button>
+  </div>
+  <div id="msg"></div>
+
+  <div id="result"></div>
+
+  <h2><span>내 도감</span><span id="count"></span></h2>
+  <div class="grid" id="dex"></div>
+</main>
+
+<script>
+// 몬스터 그림 부품 (SVG, 100x100 칸 기준). 부품을 더하면 모습 종류가 늘어남.
+const SHAPES = [
+  '<circle cx="50" cy="58" r="30"/>',
+  '<ellipse cx="50" cy="58" rx="26" ry="32"/>',
+  '<rect x="21" y="28" width="58" height="58" rx="18"/>',
+  '<path d="M50 26C68 26 74 46 78 64C82 84 66 88 50 88C34 88 18 84 22 64C26 46 32 26 50 26Z"/>',
+  '<path d="M22 56C22 26 78 26 78 56L78 88L68 80L59 88L50 80L41 88L32 80L22 88Z"/>', // 유령형: 발 없음
+];
+const EARS = [
+  '',
+  '<path d="M27 40L30 14L46 30Z"/><path d="M73 40L70 14L54 30Z"/>',
+  '<circle cx="30" cy="32" r="10"/><circle cx="70" cy="32" r="10"/>',
+  '<path fill="#f3e3c3" d="M36 32Q26 16 36 8Q35 20 44 28Z"/><path fill="#f3e3c3" d="M64 32Q74 16 64 8Q65 20 56 28Z"/>',
+  '<path fill="none" d="M50 30L50 10"/><circle cx="50" cy="9" r="5"/>',
+];
+const EYES = [
+  '<circle fill="#222" cx="40" cy="52" r="4.5"/><circle fill="#222" cx="60" cy="52" r="4.5"/><circle fill="#fff" stroke="none" cx="41.5" cy="50.5" r="1.5"/><circle fill="#fff" stroke="none" cx="61.5" cy="50.5" r="1.5"/>',
+  '<circle fill="#fff" cx="50" cy="50" r="11"/><circle fill="#222" cx="50" cy="51" r="5.5"/><circle fill="#fff" stroke="none" cx="52" cy="49" r="2"/>',
+  '<circle fill="#222" cx="38" cy="54" r="3.5"/><circle fill="#222" cx="50" cy="46" r="3.5"/><circle fill="#222" cx="62" cy="54" r="3.5"/>',
+  '<path fill="none" d="M34 52Q40 57 46 52"/><path fill="none" d="M54 52Q60 57 66 52"/>',
+  '<circle fill="#fff" cx="39" cy="51" r="8"/><circle fill="#fff" cx="61" cy="51" r="8"/><circle fill="#222" cx="40" cy="52" r="5"/><circle fill="#222" cx="62" cy="52" r="5"/><circle fill="#fff" stroke="none" cx="42" cy="50" r="2"/><circle fill="#fff" stroke="none" cx="64" cy="50" r="2"/>',
+];
+const MOUTHS = [
+  '<path fill="none" d="M43 65Q50 71 57 65"/>',
+  '<ellipse fill="#6b2b2b" cx="50" cy="67" rx="4" ry="5"/>',
+  '<path fill="none" d="M40 64Q50 73 60 64"/><path fill="#fff" stroke-width="1.5" d="M44 66L46 71L48 67Z"/><path fill="#fff" stroke-width="1.5" d="M56 66L54 71L52 67Z"/>',
+  '<path fill="none" d="M40 66Q45 62 50 66Q55 70 60 66"/>',
+];
+const PATTERNS = [
+  '',
+  '<g stroke="none" fill="rgba(0,0,0,.15)"><circle cx="34" cy="74" r="4"/><circle cx="66" cy="72" r="5"/><circle cx="57" cy="80" r="3"/></g>',
+  '<ellipse stroke="none" fill="rgba(255,255,255,.5)" cx="50" cy="76" rx="15" ry="9"/>',
+  '<g fill="none" stroke="rgba(0,0,0,.2)" stroke-width="3"><path d="M40 32L42 40"/><path d="M50 30L50 38"/><path d="M60 32L58 40"/></g>',
+];
+
+// 그림 부품 번호 → SVG 그림
+function drawMonster(a) {
+  const body = `hsl(${a.hue} 65% 65%)`;
+  return `<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" stroke="#333" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round">
+    ${a.wings ? `<g fill="rgba(255,255,255,.85)"><ellipse cx="18" cy="50" rx="11" ry="19" transform="rotate(-25 18 50)"/><ellipse cx="82" cy="50" rx="11" ry="19" transform="rotate(25 82 50)"/></g>` : ''}
+    <g fill="${body}">${EARS[a.ears]}</g>
+    ${a.shape !== 4 ? `<g fill="${body}"><ellipse cx="38" cy="89" rx="8" ry="4"/><ellipse cx="62" cy="89" rx="8" ry="4"/></g>` : ''}
+    <g fill="${body}">${SHAPES[a.shape]}</g>
+    ${PATTERNS[a.pattern]}
+    ${a.cheeks ? '<g stroke="none" fill="rgba(255,110,140,.5)"><circle cx="31" cy="62" r="4"/><circle cx="69" cy="62" r="4"/></g>' : ''}
+    ${EYES[a.eyes]}${MOUTHS[a.mouth]}
+    ${a.crown ? '<path fill="#ffd23f" d="M37 26L39 10L50 20L61 10L63 26Z"/>' : ''}
+  </svg>`;
+}
+
+const PREFIX = ['불꽃','얼음','번개','초코','바삭','말랑','반짝','꾸벅','쫀득','새콤','달콤','매콤','폭신','통통','방울','구름','별빛','달빛','이슬','모래','숲속','바다','꿀','치즈','라면','우유','젤리','쿠키','팝콘','민트'];
+const SUFFIX = ['몽','롱','삐','돌이','냥','콩','룡','뭉','팡','토','리','쿵','깨비','보','순이','공','츄','링','뿌','곰'];
+const PLACES = ['편의점 냉장고','과자 코너','계산대 옆','라면 진열대','음료수 칸','장바구니 속','빵 봉지 안','아이스크림 통','마트 주차장','영수증 뭉치'];
+const HABITS = ['낮잠을 잔다','몰래 간식을 먹는다','노래를 흥얼거린다','숨바꼭질을 한다','바코드 줄무늬를 센다','할인 스티커를 모은다','친구를 기다린다','춤을 춘다','유통기한을 확인한다','반짝이는 것을 모은다'];
+const RARITY = { common: '일반', rare: '희귀', legend: '전설' };
+const STORE_KEY = 'barcode-dex-v2';
+
+// 같은 바코드 → 항상 같은 숫자 (FNV-1a 해시)
+function hash(str) {
+  let h = 2166136261;
+  for (const c of str) { h ^= c.charCodeAt(0); h = Math.imul(h, 16777619); }
+  return h >>> 0;
+}
+// 해시를 씨앗으로 쓰는 난수 생성기(mulberry32): 같은 바코드면 같은 순서의 난수
+function rng(seed) {
+  return () => {
+    seed = (seed + 0x6D2B79F5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+// 바코드 → 몬스터. 확률: 일반 75%, 희귀 22%, 전설 3%
+function makeMonster(code) {
+  const rand = rng(hash(code));
+  const pick = arr => arr[Math.floor(rand() * arr.length)];
+  const roll = rand() * 100;
+  const r = roll < 75 ? 'common' : roll < 97 ? 'rare' : 'legend';
+  const boost = { common: 0, rare: 25, legend: 50 }[r];
+  const stat = () => Math.min(99, 10 + Math.floor(rand() * 50) + boost);
+  const hue = Math.floor(rand() * 360);
+  const n = arr => Math.floor(rand() * arr.length);
+  return {
+    code, r,
+    n: (r === 'legend' ? '황금' : '') + pick(PREFIX) + pick(SUFFIX),
+    d: `${pick(PLACES)}에서 ${pick(HABITS)}.`,
+    hp: stat(), atk: stat(), def: stat(),
+    // 배경은 몸 색의 반대쪽 색으로 해서 몸이 잘 보이게
+    color: r === 'legend' ? 'linear-gradient(135deg,#fff3b0,#e0a100)' : `hsl(${(hue + 180) % 360} 60% 88%)`,
+    art: { hue, shape: n(SHAPES), ears: n(EARS), eyes: n(EYES), mouth: n(MOUTHS), pattern: n(PATTERNS),
+           cheeks: rand() < 0.5, wings: r !== 'common', crown: r === 'legend' },
+  };
+}
+
+// 상품 바코드(EAN-8, UPC-A, EAN-13 등)는 숫자 8~14자리
+function cleanCode(raw) {
+  const code = String(raw).replace(/\D/g, '');
+  return code.length >= 8 && code.length <= 14 ? code : null;
+}
+
+function loadDex() {
+  try { return JSON.parse(localStorage.getItem(STORE_KEY)) || []; } catch { return []; }
+}
+function saveDex(dex) {
+  try { localStorage.setItem(STORE_KEY, JSON.stringify(dex)); } catch { /* 저장 불가 환경: 이번 화면에서만 유지 */ }
+}
+let dex = loadDex(); // 찍은 바코드 목록, 최신순
+
+const $ = id => document.getElementById(id);
+const portrait = m => `<div class="portrait" style="background:${m.color}">${drawMonster(m.art)}</div>`;
+
+function renderDex() {
+  const list = dex.map(makeMonster);
+  const by = r => list.filter(m => m.r === r).length;
+  $('count').textContent = `${list.length}마리 (희귀 ${by('rare')} · 전설 ${by('legend')})`;
+  $('dex').innerHTML = list.length
+    ? list.map(m => `<div class="cell r-${m.r}" data-code="${m.code}">${portrait(m)}<small>${m.n}</small></div>`).join('')
+    : '<p class="empty">아직 몬스터가 없어요. 바코드를 찍어 보세요!</p>';
+}
+
+function showCard(m, isNew) {
+  const box = $('result');
+  box.className = `r-${m.r}`;
+  box.style.display = 'block';
+  box.innerHTML = `
+    ${isNew ? '<div class="new">NEW! 새 몬스터 발견</div>' : ''}
+    ${portrait(m)}
+    <div class="name">${m.n}</div>
+    <span class="tag bg-${m.r}">${RARITY[m.r]}</span>
+    <div class="stats"><span>체력<b>${m.hp}</b></span><span>공격<b>${m.atk}</b></span><span>방어<b>${m.def}</b></span></div>
+    <div class="desc">${m.d}</div>
+    <div class="desc">바코드 ${m.code}</div>`;
+  box.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+function handleCode(raw) {
+  const code = cleanCode(raw);
+  if (!code) { $('msg').textContent = '상품 바코드 숫자(8~14자리)가 아니에요.'; return; }
+  $('msg').textContent = '';
+  const isNew = !dex.includes(code);
+  if (isNew) { dex.unshift(code); saveDex(dex); renderDex(); }
+  showCard(makeMonster(code), isNew);
+}
+
+$('dex').onclick = e => {
+  const cell = e.target.closest('.cell');
+  if (cell) showCard(makeMonster(cell.dataset.code), false);
+};
+
+function newReader() {
+  if (!window.Html5Qrcode) { $('msg').textContent = '바코드 판독기를 불러오지 못했어요. 인터넷 연결을 확인해 주세요.'; return null; }
+  const F = Html5QrcodeSupportedFormats;
+  return new Html5Qrcode('reader', { formatsToSupport: [F.EAN_13, F.EAN_8, F.UPC_A, F.UPC_E, F.CODE_128] });
+}
+
+// 실시간 카메라 스캔
+let scanner = null;
+async function stopScan() {
+  if (scanner) { try { await scanner.stop(); scanner.clear(); } catch {} scanner = null; }
+  $('reader').hidden = true;
+  $('scanBtn').textContent = '📷 바코드 스캔';
+}
+$('scanBtn').onclick = async () => {
+  if (scanner) return stopScan();
+  scanner = newReader();
+  if (!scanner) return;
+  $('reader').hidden = false;
+  $('scanBtn').textContent = '■ 스캔 멈추기';
+  $('msg').textContent = '';
+  try {
+    await scanner.start({ facingMode: 'environment' }, { fps: 10, qrbox: { width: 260, height: 120 } },
+      async text => { await stopScan(); handleCode(text); });
+  } catch (e) {
+    scanner = null;
+    $('reader').hidden = true;
+    $('scanBtn').textContent = '📷 바코드 스캔';
+    $('msg').textContent = '카메라를 켤 수 없어요. 카메라 권한을 허용하거나 "사진으로 읽기"를 써 주세요.';
+  }
+};
+
+// 사진 속 바코드 읽기
+$('photo').onchange = async () => {
+  const file = $('photo').files[0];
+  $('photo').value = ''; // 같은 사진을 다시 골라도 동작하게
+  if (!file) return;
+  if (scanner) await stopScan();
+  const reader = newReader();
+  if (!reader) return;
+  $('photoLabel').textContent = '읽는 중…';
+  $('msg').textContent = '';
+  try {
+    handleCode(await reader.scanFile(file, false));
+  } catch {
+    $('msg').textContent = '사진에서 바코드를 찾지 못했어요. 바코드가 화면에 크고 선명하게 나오도록 다시 찍어 주세요.';
+  } finally {
+    reader.clear();
+    $('photoLabel').textContent = '🖼 사진으로 읽기';
+  }
+};
+
+$('codeBtn').onclick = () => handleCode($('codeInput').value);
+$('codeInput').onkeydown = e => { if (e.key === 'Enter') handleCode($('codeInput').value); };
+
+renderDex();
+
+// 자체 점검: 주소 끝에 #test 를 붙이면 콘솔에 결과 출력
+if (location.hash === '#test') {
+  console.assert(JSON.stringify(makeMonster('8801234567890')) === JSON.stringify(makeMonster('8801234567890')), '같은 바코드 → 같은 몬스터');
+  console.assert(cleanCode('abc') === null && cleanCode('8801234567890') === '8801234567890', '바코드 검사');
+  const count = { common: 0, rare: 0, legend: 0 };
+  for (let i = 0; i < 10000; i++) count[makeMonster(String(8800000000000 + i * 7919)).r]++;
+  console.log('selftest 등급 분포(1만 회):', count);
+}
+</script>
