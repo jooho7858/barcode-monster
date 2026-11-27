@@ -2,7 +2,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>바코드 몬스터 도감</title>
 <meta name="claude:viewport-fit-sides" content="cover">
-<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<!-- 바코드 판독기: ZXing-C++ 웹어셈블리판. 판독 엔진(.wasm)은 처음 쓸 때 jsDelivr에서 받아옴 -->
+<script src="https://cdn.jsdelivr.net/npm/barcode-detector@3.2.3/dist/iife/ponyfill.js"></script>
 <style>
   :root {
     --bg: #f6f3ee; --card: #ffffff; --text: #222; --sub: #777; --line: #e4ded4;
@@ -22,7 +23,7 @@
   h1 { font-size: 22px; margin: 8px 0 4px; }
   .sub { color: var(--sub); font-size: 14px; margin: 0 0 16px; }
   button { font: inherit; border: 0; border-radius: 12px; padding: 14px; background: var(--btn); color: var(--btn-text); cursor: pointer; width: 100%; font-weight: 600; }
-  #reader { margin-top: 12px; border-radius: 12px; overflow: hidden; }
+  #video { display: block; width: 100%; margin-top: 12px; border-radius: 12px; background: #000; }
   #msg { min-height: 20px; color: #d33; font-size: 14px; margin: 8px 0; }
   #result { display: none; text-align: center; background: var(--card); border: 3px solid var(--line); border-radius: 16px; padding: 20px; margin: 12px 0; }
   .portrait { width: 140px; height: 140px; margin: 0 auto; border-radius: 50%; overflow: hidden; }
@@ -51,7 +52,7 @@
   <p class="sub">상품 바코드를 찍으면 그 바코드에 사는 몬스터가 나타나요. 바코드마다 다른 몬스터!</p>
 
   <button id="scanBtn">📷 바코드 스캔</button>
-  <div id="reader" hidden></div>
+  <video id="video" playsinline muted hidden></video>
   <!-- 예비: 실시간 카메라가 막힌 곳(Claude 비공개 페이지 등)에서는 사진으로 읽기 -->
   <input type="file" id="photo" accept="image/*" capture="environment">
   <label for="photo" class="btn ghost" id="photoLabel">🖼 사진으로 읽기</label>
@@ -214,43 +215,49 @@ $('dex').onclick = e => {
   if (cell) showCard(makeMonster(cell.dataset.code), false);
 };
 
-function newReader() {
-  if (!window.Html5Qrcode) { $('msg').textContent = '바코드 판독기를 불러오지 못했어요. 인터넷 연결을 확인해 주세요.'; return null; }
-  const F = Html5QrcodeSupportedFormats;
-  return new Html5Qrcode('reader', {
-    formatsToSupport: [F.EAN_13, F.EAN_8, F.UPC_A, F.UPC_E, F.CODE_128],
-    experimentalFeatures: { useBarCodeDetectorIfSupported: true }, // 안드로이드 크롬 내장 인식기
-  });
+let detector = null;
+function getDetector() {
+  if (!window.BarcodeDetectionAPI) { $('msg').textContent = '바코드 판독기를 불러오지 못했어요. 인터넷 연결을 확인해 주세요.'; return null; }
+  return detector ??= new BarcodeDetectionAPI.BarcodeDetector({ formats: ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128'] });
 }
 
 // 실시간 카메라 스캔
-let scanner = null;
-async function stopScan() {
-  if (scanner) { try { await scanner.stop(); scanner.clear(); } catch {} scanner = null; }
-  $('reader').hidden = true;
+let stream = null;
+function stopScan() {
+  if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+  $('video').srcObject = null;
+  $('video').hidden = true;
   $('scanBtn').textContent = '📷 바코드 스캔';
 }
 $('scanBtn').onclick = async () => {
-  if (scanner) return stopScan();
-  scanner = newReader();
-  if (!scanner) return;
-  $('reader').hidden = false;
-  $('scanBtn').textContent = '■ 스캔 멈추기';
+  if (stream) return stopScan();
+  const det = getDetector();
+  if (!det) return;
   $('msg').textContent = '';
+  let mine;
   try {
-    // 고화질 + 넓은 인식 영역: 기본값(저화질·작은 네모)은 아이폰에서 1차원 바코드를 잘 못 읽음
-    await scanner.start({ facingMode: 'environment' }, {
-      fps: 10,
-      qrbox: (w, h) => ({ width: Math.max(100, Math.floor(w * 0.9)), height: Math.max(60, Math.floor(h * 0.45)) }),
-      videoConstraints: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } },
-    },
-      async text => { await stopScan(); handleCode(text); });
-  } catch (e) {
-    scanner = null;
-    $('reader').hidden = true;
-    $('scanBtn').textContent = '📷 바코드 스캔';
+    // 고화질로 받아야 바코드의 가는 줄이 뭉개지지 않음
+    mine = stream = await navigator.mediaDevices.getUserMedia({ audio: false,
+      video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } } });
+    const v = $('video');
+    v.srcObject = stream;
+    v.hidden = false;
+    await v.play();
+  } catch {
+    stopScan();
     $('msg').textContent = '카메라를 켤 수 없어요. 카메라 권한을 허용하거나 "사진으로 읽기"를 써 주세요.';
+    return;
   }
+  $('scanBtn').textContent = '■ 스캔 멈추기';
+  const tick = async () => {
+    if (stream !== mine) return; // 멈췄거나 새 스캔이 시작됨
+    try {
+      const [hit] = await det.detect($('video'));
+      if (hit && stream === mine) { stopScan(); handleCode(hit.rawValue); return; }
+    } catch { /* 영상 준비 전 등: 다음 장면에서 다시 시도 */ }
+    setTimeout(tick, 150);
+  };
+  tick();
 };
 
 // 사진 속 바코드 읽기
@@ -258,17 +265,18 @@ $('photo').onchange = async () => {
   const file = $('photo').files[0];
   $('photo').value = ''; // 같은 사진을 다시 골라도 동작하게
   if (!file) return;
-  if (scanner) await stopScan();
-  const reader = newReader();
-  if (!reader) return;
+  stopScan();
+  const det = getDetector();
+  if (!det) return;
   $('photoLabel').textContent = '읽는 중…';
   $('msg').textContent = '';
   try {
-    handleCode(await reader.scanFile(file, false));
+    const [hit] = await det.detect(file);
+    if (hit) handleCode(hit.rawValue);
+    else $('msg').textContent = '사진에서 바코드를 찾지 못했어요. 바코드가 화면에 크고 선명하게 나오도록 다시 찍어 주세요.';
   } catch {
-    $('msg').textContent = '사진에서 바코드를 찾지 못했어요. 바코드가 화면에 크고 선명하게 나오도록 다시 찍어 주세요.';
+    $('msg').textContent = '사진을 읽지 못했어요. 다른 사진으로 해 주세요.';
   } finally {
-    reader.clear();
     $('photoLabel').textContent = '🖼 사진으로 읽기';
   }
 };
